@@ -70,3 +70,63 @@ El modelo está dividido en módulos para facilitar el entendimiento del negocio
 3. Verificar tablas:  
    ```sql
    SELECT * FROM INFORMATION_SCHEMA.TABLES;
+4. Verificar vistas:  
+   ```sql
+   SELECT * FROM INFORMATION_SCHEMA.VIEWS;
+5. Probar KPIs principales:
+
+SELECT * FROM vw_EntregasConformes;
+SELECT * FROM KPI_OnTimeDeliveryRate;
+SELECT * FROM KPI_TrazabilidadLote;
+SELECT * FROM KPI_IndiceConsolidacion;
+SELECT * FROM KPI_UtilizacionFlota;
+SELECT * FROM KPI_IncidenciasErrorLote;
+
+### 🎯 Conocimientos demostrados
+
+Este proyecto demuestra habilidades clave de Ingeniería de Datos y Diseño de Bases de Datos:
+
+Diseño de modelo de datos relacional
+
+Normalización y relaciones 1:N y N:M
+
+Integridad referencial mediante claves foráneas
+
+Implementación de reglas de negocio con triggers
+
+Automatización de análisis mediante vistas para KPIs
+
+Procedimientos almacenados
+
+Control de accesos y permisos (seguridad básica)
+
+Simulación de un flujo logístico real (cadena de frío y trazabilidad)
+
+📁 Estructura recomendada del repositorio
+andreani-logistica-sql/
+├─ 01_andreani_logistica.sql      # Script principal
+├─ DER Completo.png               # Diagrama entidad-relación
+└─ README.md                      # Documentación del proyecto
+
+
+(Opcionalmente podés mover la imagen a una carpeta /docs para mayor prolijidad.)
+
+### 👤 Autor
+
+Ezrasaf
+Estudiante de Ingeniería en Informática (UADE)
+Interesado en SQL, Ingeniería de Datos, Backend y Automatización.
+
+### ⭐ Valor para Portfolio
+
+Este proyecto es ideal para demostrar:
+
+Capacidad de modelar procesos de negocio complejos
+
+Dominio de SQL Server y consultas avanzadas
+
+Construcción de KPIs y analítica operativa
+
+Aplicación de conceptos reales de logística y cadena de frío
+
+Buenas prácticas en diseño y documentación técnica
