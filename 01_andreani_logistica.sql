@@ -1,13 +1,42 @@
-CREATE DATABASE AndreaniLogistica;
+ÔªøCREATE DATABASE AndreaniLogistica;
 GO
 USE AndreaniLogistica;
 GO
-
-CREATE TABLE EmpresaCliente (
+CREATE TABLE TipoEmpresa (
+    ID_TipoEmpresa INT PRIMARY KEY,
+    Descripcion NVARCHAR(50) -- 'Laboratorio', 'Droguer√≠a', 'Distribuidor'
+);
+CREATE OR ALTER TABLE EmpresaCliente (
     ID_Empresa INT PRIMARY KEY,
     Nombre NVARCHAR(100),
-    CUIT CHAR(11)
+    CUIT CHAR(11),
+    ID_TipoEmpresa INT,
+    FOREIGN KEY (ID_TipoEmpresa) REFERENCES TipoEmpresa(ID_TipoEmpresa)
 );
+CREATE OR ALTER PROCEDURE sp_TrazabilidadLote
+    @ID_Lote INT
+AS
+BEGIN
+    SELECT 
+        p.NombreComercial,
+        e.FechaEntrega,
+        e.Zona,
+        o.Nombre AS NombreOperario,
+        ec.Nombre AS EmpresaCliente
+    FROM Entrega e
+    JOIN Caja_Producto cp ON cp.ID_Caja = e.ID_Caja
+    JOIN Lote l ON l.ID_Lote = cp.ID_Lote
+    JOIN Producto p ON p.ID_Producto = l.ID_Producto
+    JOIN Operario o ON o.ID_Operario = e.ID_Operario
+    JOIN DetallePedido dp ON dp.ID_Lote = l.ID_Lote
+    JOIN Pedido ped ON ped.ID_Pedido = dp.ID_Pedido
+    JOIN EmpresaCliente ec ON ec.ID_Empresa = ped.ID_Empresa
+    WHERE l.ID_Lote = @ID_Lote;
+END;
+exec sp_TrazabilidadLote @ID_Lote = 10;
+select * from EmpresaCliente
+
+CREATE TABLE destino
 
 CREATE TABLE Producto (
     ID_Producto INT PRIMARY KEY,
@@ -74,6 +103,14 @@ CREATE TABLE Operario (
     Cargo NVARCHAR(50)
 );
 
+CREATE TABLE Picking (
+    ID_Picking INT PRIMARY KEY,
+    ID_Detalle INT FOREIGN KEY REFERENCES DetallePedido(ID_Detalle),
+    ID_Operario INT FOREIGN KEY REFERENCES Operario(ID_Operario),
+    FechaHora DATETIME,
+    Estado NVARCHAR(50) -- Por ejemplo: 'Completado', 'Pendiente', etc.
+);
+
 CREATE TABLE Entrega (
     ID_Entrega INT PRIMARY KEY,
     ID_Caja INT,
@@ -97,6 +134,15 @@ CREATE TABLE Incidencia (
     FechaRegistro DATETIME,
     FOREIGN KEY (ID_Entrega) REFERENCES Entrega(ID_Entrega)
 );
+
+INSERT INTO Incidencia (ID_Incidencia, ID_Entrega, Tipo, Descripcion, FechaRegistro)
+VALUES 
+(1, 2, 'Demora', 'Entrega retrasada por tr√°fico en la zona norte.', '2025-06-11 10:30:00'),
+(2, 4, 'Producto Da√±ado', 'Caja entregada con envase roto.', '2025-06-13 14:15:00'),
+(3, 5, 'Error de direcci√≥n', 'Direcci√≥n del cliente mal ingresada.', '2025-06-14 09:45:00'),
+(4, 7, 'Falta de producto', 'Se entreg√≥ sin una unidad solicitada.', '2025-06-16 16:00:00'),
+(5, 9, 'Rechazo del cliente', 'Cliente no recibi√≥ la entrega por vencimiento cercano.', '2025-06-18 11:20:00');
+
 -- 3. Crear vista para KPIs
 -- 9. KPI - Entregas conformes por zona (vw_EntregasConformes)
 
@@ -105,10 +151,12 @@ CREATE VIEW vw_EntregasConformes AS
 SELECT
     Zona,
     COUNT(*) AS TotalEntregas,
-    SUM(CASE WHEN RecibidoConforme = 'SÌ' THEN 1 ELSE 0 END) AS EntregasOK,
-    CAST(SUM(CASE WHEN RecibidoConforme = 'SÌ' THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS DECIMAL(5,2)) AS PorcentajeOK
+    SUM(CASE WHEN RecibidoConforme = 'S√≠' THEN 1 ELSE 0 END) AS EntregasOK,
+    CAST(SUM(CASE WHEN RecibidoConforme = 'S√≠' THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS DECIMAL(5,2)) AS PorcentajeOK
 FROM Entrega
 GROUP BY Zona;
+SELECT * FROM vw_EntregasConformes;
+Select * from Entrega;
 
 -- 4. Trigger para evitar productos vencidos en pedidos
 CREATE TRIGGER trg_BloqueoPedidoVencido
@@ -142,21 +190,33 @@ BEGIN
     END
 END;
 
-
+Select * from vw_EntregasConformes
 -- 5. Procedimiento para trazabilidad de lote
-CREATE PROCEDURE sp_TrazabilidadLote
+CREATE OR ALTER PROCEDURE sp_TrazabilidadLote
     @ID_Lote INT
 AS
 BEGIN
-    SELECT p.NombreComercial, e.FechaEntrega, e.Zona
+    SELECT 
+        p.NombreComercial,
+        e.FechaEntrega,
+        e.Zona,
+        o.Nombre AS NombreOperario,
+        ec.Nombre AS EmpresaCliente
     FROM Entrega e
     JOIN Caja_Producto cp ON cp.ID_Caja = e.ID_Caja
     JOIN Lote l ON l.ID_Lote = cp.ID_Lote
     JOIN Producto p ON p.ID_Producto = l.ID_Producto
+    JOIN Operario o ON o.ID_Operario = e.ID_Operario
+    JOIN DetallePedido dp ON dp.ID_Lote = l.ID_Lote
+    JOIN Pedido ped ON ped.ID_Pedido = dp.ID_Pedido
+    JOIN EmpresaCliente ec ON ec.ID_Empresa = ped.ID_Empresa
     WHERE l.ID_Lote = @ID_Lote;
 END;
+exec sp_TrazabilidadLote @ID_Lote = 10;
+select * from EmpresaCliente
 
--- 6. Permisos b·sicos para seguridad
+select * from DetallePedido
+-- 6. Permisos b√°sicos para seguridad
 CREATE LOGIN operador WITH PASSWORD = 'Operador123';
 CREATE USER operador FOR LOGIN operador;
 GRANT SELECT, INSERT ON Pedido TO operador;
@@ -165,10 +225,10 @@ CREATE LOGIN auditor WITH PASSWORD = 'Auditor123';
 CREATE USER auditor FOR LOGIN auditor;
 GRANT SELECT ON SCHEMA :: dbo TO auditor;
 
--- 7. Carga de datos simulados (mÌnimo 10 registros por tabla)
+-- 7. Carga de datos (m√≠nimo 10 registros por tabla)
 
 INSERT INTO EmpresaCliente VALUES
-(1, 'Laboratorio BagÛ', '30712345678'),
+(1, 'Laboratorio Bag√≥', '30712345678'),
 (2, 'Roemmers', '30598765432'),
 (3, 'Elea', '30654321987'),
 (4, 'Pfizer', '30555123456'),
@@ -180,13 +240,13 @@ INSERT INTO EmpresaCliente VALUES
 (10, 'Abbott', '30987654321');
 
 INSERT INTO Producto VALUES
-(1, 'Paracetamol 500mg', 'Cadena de frÌo'),
+(1, 'Paracetamol 500mg', 'Cadena de fr√≠o'),
 (2, 'Ibuprofeno 400mg', 'Ambiente controlado'),
-(3, 'Amoxicilina 500mg', 'Cadena de frÌo'),
+(3, 'Amoxicilina 500mg', 'Cadena de fr√≠o'),
 (4, 'Omeprazol 20mg', 'Ambiente controlado'),
 (5, 'Loratadina 10mg', 'Temperatura ambiente'),
-(6, 'Insulina', 'RefrigeraciÛn estricta'),
-(7, 'Vacuna COVID-19', 'Ultra congelaciÛn'),
+(6, 'Insulina', 'Refrigeraci√≥n estricta'),
+(7, 'Vacuna COVID-19', 'Ultra congelaci√≥n'),
 (8, 'Metformina 850mg', 'Ambiente controlado'),
 (9, 'Aspirina 100mg', 'Ambiente controlado'),
 (10, 'Levotiroxina 50mcg', 'Ambiente controlado');
@@ -202,6 +262,14 @@ INSERT INTO Lote VALUES
 (8, 8, '2026-03-01', 15.0, 25.0),
 (9, 9, '2025-12-25', 15.0, 25.0),
 (10, 10, '2026-04-15', 15.0, 25.0);
+
+INSERT INTO Incidencia (ID_Incidencia, ID_Entrega, Tipo, Descripcion, FechaRegistro)
+VALUES 
+(1, 2, 'Demora', 'Entrega retrasada por tr√°fico en la zona norte.', '2025-06-11T10:30:00'),
+(2, 4, 'Producto Da√±ado', 'Caja entregada con envase roto.', '2025-06-13T14:15:00'),
+(3, 5, 'Error de direcci√≥n', 'Direcci√≥n del cliente mal ingresada.', '2025-06-14T09:45:00'),
+(4, 7, 'Falta de producto', 'Se entreg√≥ sin una unidad solicitada.', '2025-06-16T16:00:00'),
+(5, 9, 'Rechazo del cliente', 'Cliente no recibi√≥ la entrega por vencimiento cercano.', '2025-06-18T11:20:00');
 
 INSERT INTO Pedido VALUES
 (1, 1, '2025-06-01', 'Pendiente'),
@@ -252,75 +320,77 @@ INSERT INTO Caja_Producto VALUES
 (10, 10, 100);
 
 INSERT INTO Vehiculo VALUES
-(1, 'AAA123', 'CamiÛn', 1000),
-(2, 'BBB234', 'FurgÛn', 800),
+(1, 'AAA123', 'Cami√≥n', 1000),
+(2, 'BBB234', 'Furg√≥n', 800),
 (3, 'CCC345', 'Refrigerado', 600),
 (4, 'DDD456', 'Refrigerado', 700),
-(5, 'EEE567', 'CamiÛn', 1200),
-(6, 'FFF678', 'FurgÛn', 850),
-(7, 'GGG789', 'CamiÛn', 1100),
-(8, 'HHH890', 'FurgÛn', 900),
+(5, 'EEE567', 'Cami√≥n', 1200),
+(6, 'FFF678', 'Furg√≥n', 850),
+(7, 'GGG789', 'Cami√≥n', 1100),
+(8, 'HHH890', 'Furg√≥n', 900),
 (9, 'III901', 'Refrigerado', 650),
-(10, 'JJJ012', 'CamiÛn', 1300);
+(10, 'JJJ012', 'Cami√≥n', 1300);
 
 INSERT INTO Ruta VALUES
 (1, 'Buenos Aires', 'Rosario', 5),
-(2, 'CÛrdoba', 'Mendoza', 8),
-(3, 'La Plata', 'BahÌa Blanca', 7),
-(4, 'Salta', 'Tucum·n', 4),
+(2, 'C√≥rdoba', 'Mendoza', 8),
+(3, 'La Plata', 'Bah√≠a Blanca', 7),
+(4, 'Salta', 'Tucum√°n', 4),
 (5, 'Mar del Plata', 'Necochea', 3),
-(6, 'Santa Fe', 'Paran·', 2),
+(6, 'Santa Fe', 'Paran√°', 2),
 (7, 'Corrientes', 'Resistencia', 2),
-(8, 'Posadas', 'Iguaz˙', 6),
+(8, 'Posadas', 'Iguaz√∫', 6),
 (9, 'San Juan', 'San Luis', 4),
-(10, 'NeuquÈn', 'Bariloche', 6);
+(10, 'Neuqu√©n', 'Bariloche', 6);
+
 
 INSERT INTO Operario VALUES
-(1, 'Carlos DÌaz', 'Chofer'),
-(2, 'Laura GÛmez', 'Supervisor'),
-(3, 'JosÈ PÈrez', 'Chofer'),
+(1, 'Carlos D√≠az', 'Chofer'),
+(2, 'Laura G√≥mez', 'Supervisor'),
+(3, 'Jos√© P√©rez', 'Chofer'),
 (4, 'Ana Ruiz', 'Supervisor'),
 (5, 'Luis Torres', 'Chofer'),
-(6, 'MarÌa LÛpez', 'Supervisor'),
-(7, 'Pedro S·nchez', 'Chofer'),
-(8, 'SofÌa RamÌrez', 'Supervisor'),
+(6, 'Mar√≠a L√≥pez', 'Supervisor'),
+(7, 'Pedro S√°nchez', 'Chofer'),
+(8, 'Sof√≠a Ram√≠rez', 'Supervisor'),
 (9, 'Juan Navarro', 'Chofer'),
-(10, 'LucÌa Aguilar', 'Supervisor');
+(10, 'Luc√≠a Aguilar', 'Supervisor');
 
 INSERT INTO Entrega VALUES
-(1, 1, 1, 1, 1, '2025-06-10', 'SÌ', 'Centro'),
-(2, 2, 2, 2, 2, '2025-06-11', 'SÌ', 'Norte'),
+(1, 1, 1, 1, 1, '2025-06-10', 'S√≠', 'Centro'),
+(2, 2, 2, 2, 2, '2025-06-11', 'S√≠', 'Norte'),
 (3, 3, 3, 3, 3, '2025-06-12', 'No', 'Sur'),
-(4, 4, 4, 4, 4, '2025-06-13', 'SÌ', 'Centro'),
-(5, 5, 5, 5, 5, '2025-06-14', 'SÌ', 'Norte'),
-(6, 6, 6, 6, 6, '2025-06-15', 'SÌ', 'Sur'),
+(4, 4, 4, 4, 4, '2025-06-13', 'S√≠', 'Centro'),
+(5, 5, 5, 5, 5, '2025-06-14', 'S√≠', 'Norte'),
+(6, 6, 6, 6, 6, '2025-06-15', 'S√≠', 'Sur'),
 (7, 7, 7, 7, 7, '2025-06-16', 'No', 'Centro'),
-(8, 8, 8, 8, 8, '2025-06-17', 'SÌ', 'Norte'),
-(9, 9, 9, 9, 9, '2025-06-18', 'SÌ', 'Sur'),
-(10, 10, 10, 10, 10, '2025-06-19', 'SÌ', 'Centro');
+(8, 8, 8, 8, 8, '2025-06-17', 'S√≠', 'Norte'),
+(9, 9, 9, 9, 9, '2025-06-18', 'S√≠', 'Sur'),
+(10, 10, 10, 10, 10, '2025-06-19', 'S√≠', 'Centro');
 
 INSERT INTO Incidencia VALUES
-(1, 3, 'Temperatura fuera de rango', 'Producto sufriÛ exposiciÛn a calor', '2025-06-12 10:00'),
-(2, 7, 'Falla de entrega', 'No se encontrÛ al destinatario', '2025-06-16 14:30'),
-(3, 3, 'Golpe en tr·nsito', 'Caja daÒada en el transporte', '2025-06-12 09:15'),
-(4, 7, 'Reentrega programada', 'Se reprogramÛ por ausencia del receptor', '2025-06-16 18:45'),
+(1, 3, 'Temperatura fuera de rango', 'Producto sufri√≥ exposici√≥n a calor', '2025-06-12 10:00'),
+(2, 7, 'Falla de entrega', 'No se encontr√≥ al destinatario', '2025-06-16 14:30'),
+(3, 3, 'Golpe en tr√°nsito', 'Caja da√±ada en el transporte', '2025-06-12 09:15'),
+(4, 7, 'Reentrega programada', 'Se reprogram√≥ por ausencia del receptor', '2025-06-16 18:45'),
 (5, 1, 'Entrega adelantada', 'Entrega realizada antes de lo previsto', '2025-06-10 08:00'),
-(6, 2, 'Ruta alternativa', 'DesvÌo por corte en ruta principal', '2025-06-11 11:20'),
-(7, 6, 'Control de temperatura OK', 'Registro correcto de conservaciÛn', '2025-06-15 16:00'),
+(6, 2, 'Ruta alternativa', 'Desv√≠o por corte en ruta principal', '2025-06-11 11:20'),
+(7, 6, 'Control de temperatura OK', 'Registro correcto de conservaci√≥n', '2025-06-15 16:00'),
 (8, 5, 'Entrega conforme', 'Sin novedades', '2025-06-14 09:00'),
 (9, 4, 'Control fallido', 'Falta de registro de temperatura', '2025-06-13 13:15'),
 (10, 9, 'Entrega parcial', 'Faltante de un producto', '2025-06-18 17:40');
+select * from Incidencia
 
  --8. KPI - Nivel de cumplimiento en entregas (On Time Delivery Rate)
 -- Suponemos que la fecha comprometida de entrega es la misma que la fecha del pedido (para simplificar)
--- Se consideran entregas 'a tiempo' si la fecha de entrega es igual o anterior a la fecha del pedido + 3 dÌas 
-CREATE VIEW KPI_OnTimeDeliveryRate AS
+-- Se consideran entregas 'a tiempo' si la fecha de entrega es igual o anterior a la fecha del pedido + 3 d√≠as 
+CREATE OR ALTER VIEW KPI_OnTimeDeliveryRate AS
 SELECT 
     ec.Nombre AS Cliente,
     COUNT(e.ID_Entrega) AS TotalEntregas,
-    SUM(CASE WHEN e.FechaEntrega <= DATEADD(DAY, 3, p.FechaPedido) THEN 1 ELSE 0 END) AS EntregasATiempo,
+    SUM(CASE WHEN e.FechaEntrega <= DATEADD(DAY, 10, p.FechaPedido) THEN 1 ELSE 0 END) AS EntregasATiempo,
     CAST(
-        SUM(CASE WHEN e.FechaEntrega <= DATEADD(DAY, 3, p.FechaPedido) THEN 1 ELSE 0 END) * 100.0 / COUNT(e.ID_Entrega)
+        SUM(CASE WHEN e.FechaEntrega <= DATEADD(DAY, 10, p.FechaPedido) THEN 1 ELSE 0 END) * 100.0 / COUNT(e.ID_Entrega)
         AS DECIMAL(5,2)
     ) AS PorcentajeOnTime
 FROM Entrega e
@@ -331,7 +401,7 @@ JOIN DetallePedido dp ON dp.ID_Lote = l.ID_Lote
 JOIN Pedido p ON dp.ID_Pedido = p.ID_Pedido
 JOIN EmpresaCliente ec ON p.ID_Empresa = ec.ID_Empresa
 GROUP BY ec.Nombre;
-
+select * from KPI_OnTimeDeliveryRate
 -- 10. KPI - Trazabilidad completa por lote
 
 CREATE VIEW KPI_TrazabilidadLote AS
@@ -357,8 +427,8 @@ JOIN Caja c ON cp.ID_Caja = c.ID_Caja
 JOIN Entrega e ON c.ID_Caja = e.ID_Caja
 JOIN Vehiculo v ON e.ID_Vehiculo = v.ID_Vehiculo
 JOIN Operario o ON e.ID_Operario = o.ID_Operario;
-
--- 11. KPI - Õndice de consolidaciÛn de pedidos
+select * from KPI_TrazabilidadLote
+-- 11. KPI - √çndice de consolidaci√≥n de pedidos
 -- Promedio de productos distintos por cada caja enviada
 
 CREATE VIEW KPI_IndiceConsolidacion AS
@@ -373,24 +443,24 @@ JOIN DetallePedido dp ON l.ID_Lote = dp.ID_Lote
 JOIN Pedido p ON dp.ID_Pedido = p.ID_Pedido
 JOIN EmpresaCliente ec ON p.ID_Empresa = ec.ID_Empresa
 GROUP BY c.ID_Caja, ec.Nombre;
+Select * from KPI_IndiceConsolidacion
+-- 12. KPI - Utilizaci√≥n de flota
+-- % de ocupaci√≥n promedio de los veh√≠culos utilizados por zona y tipo
 
--- 12. KPI - UtilizaciÛn de flota
--- % de ocupaciÛn promedio de los vehÌculos utilizados por zona y tipo
-
-CREATE VIEW KPI_UtilizacionFlota AS
+CREATE OR ALTER VIEW KPI_UtilizacionFlota AS
 SELECT
     e.Zona,
     v.Tipo,
-    AVG(c.Peso / NULLIF(v.CapacidadKg, 0)) * 100 AS PorcentajeOcupacionPromedio
+    cast(AVG(c.Peso / NULLIF(v.CapacidadKg, 0)) * 100 AS decimal(5,2)) AS PorcentajeOcupacionPromedio
 FROM Entrega e
 JOIN Vehiculo v ON e.ID_Vehiculo = v.ID_Vehiculo
 JOIN Caja c ON e.ID_Caja = c.ID_Caja
 GROUP BY e.Zona, v.Tipo;
-
+Select * from KPI_UtilizacionFlota
 -- 13. KPI - Incidencias por error de lote
--- Suponemos que los errores de lote se registran como tipo especÌfico de incidencia
+-- Suponemos que los errores de lote se registran como tipo espec√≠fico de incidencia
 
-CREATE VIEW KPI_IncidenciasErrorLote AS
+CREATE or alter VIEW KPI_IncidenciasErrorLote AS
 SELECT
     l.ID_Lote,
     p.NombreComercial,
@@ -401,9 +471,10 @@ JOIN Caja c ON e.ID_Caja = c.ID_Caja
 JOIN Caja_Producto cp ON c.ID_Caja = cp.ID_Caja
 JOIN Lote l ON cp.ID_Lote = l.ID_Lote
 JOIN Producto p ON l.ID_Producto = p.ID_Producto
-WHERE i.Tipo LIKE '%error de lote%'
+WHERE i.Tipo LIKE '%error%'
 GROUP BY l.ID_Lote, p.NombreComercial;
-
+Select * from KPI_IncidenciasErrorLote
+Select * from Incidencia
 --ver tablas
 SELECT * 
 FROM INFORMATION_SCHEMA.TABLES 
@@ -412,3 +483,93 @@ WHERE TABLE_TYPE = 'BASE TABLE';
 --ver vistas
 SELECT * 
 FROM INFORMATION_SCHEMA.VIEWS;
+-- Funcion dias demora
+CREATE FUNCTION dbo.fn_DemoraEntrega (@ID_Entrega INT)
+RETURNS INT
+AS
+BEGIN
+    DECLARE @DiasDemora INT;
+
+    SELECT @DiasDemora = DATEDIFF(DAY, p.FechaPedido, e.FechaEntrega)
+    FROM Entrega e
+    JOIN Caja c ON e.ID_Caja = c.ID_Caja
+    JOIN Caja_Producto cp ON c.ID_Caja = cp.ID_Caja
+    JOIN Lote l ON cp.ID_Lote = l.ID_Lote
+    JOIN DetallePedido dp ON l.ID_Lote = dp.ID_Lote
+    JOIN Pedido p ON dp.ID_Pedido = p.ID_Pedido
+    WHERE e.ID_Entrega = @ID_Entrega;
+
+    RETURN @DiasDemora;
+END;
+
+SELECT 
+    ID_Entrega,
+    FechaEntrega,
+    dbo.fn_DemoraEntrega(ID_Entrega) AS DiasDeDemora
+FROM Entrega;
+
+
+CREATE VIEW vw_AuditoriaEntregas AS
+SELECT 
+    e.ID_Entrega, e.FechaEntrega, e.Zona, e.RecibidoConforme,
+    i.Tipo AS TipoIncidencia, i.Descripcion AS DetalleIncidencia
+FROM Entrega e
+LEFT JOIN Incidencia i ON e.ID_Entrega = i.ID_Entrega;
+
+CREATE  OR ALTER PROCEDURE sp_TrazabilidadLote
+    @ID_Lote INT,
+    @FechaDesde DATE,
+    @UsuarioAuditor NVARCHAR(100)
+AS
+BEGIN
+    SELECT p.NombreComercial, e.FechaEntrega, e.Zona, @FechaDesde AS FechaFiltro, @UsuarioAuditor AS Auditor
+    FROM Entrega e
+    JOIN Caja_Producto cp ON cp.ID_Caja = e.ID_Caja
+    JOIN Lote l ON l.ID_Lote = cp.ID_Lote
+    JOIN Producto p ON p.ID_Producto = l.ID_Producto
+    WHERE l.ID_Lote = @ID_Lote
+      AND e.FechaEntrega >= @FechaDesde;
+END;
+EXEC sp_TrazabilidadLote 
+DECLARE @ID_Producto INT = 1;
+DECLARE @Cantidad INT = 5;
+
+BEGIN TRY
+    BEGIN TRANSACTION;
+
+    -- Validar stock disponible
+    DECLARE @StockActual INT;
+
+    SELECT @StockActual = Stock
+    FROM Productos
+    WHERE ID_Producto = @ID_Producto;
+
+    IF @StockActual IS NULL
+    BEGIN
+        RAISERROR('Producto no existe.', 16, 1);
+    END
+    ELSE IF @StockActual < @Cantidad
+    BEGIN
+        RAISERROR('Stock insuficiente.', 16, 1);
+    END
+
+    -- Registrar el pedido
+    INSERT INTO Pedidos (ID_Producto, Cantidad)
+    VALUES (@ID_Producto, @Cantidad);
+
+    -- Descontar el stock
+    UPDATE Productos
+    SET Stock = Stock - @Cantidad
+    WHERE ID_Producto = @ID_Producto;
+
+    COMMIT;
+    PRINT '‚úÖ Venta completada correctamente.';
+
+END TRY
+BEGIN CATCH
+    ROLLBACK;
+
+    PRINT '‚ùå Error en la transacci√≥n.';
+    PRINT ERROR_MESSAGE();
+END CATCH;
+
